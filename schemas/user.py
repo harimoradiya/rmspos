@@ -51,6 +51,8 @@ class UserInDB(UserBase):
     role: UserRole
     username: str
     is_active: bool
+    outlet_id: Optional[int] = None
+    pin: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 

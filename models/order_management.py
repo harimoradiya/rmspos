@@ -31,8 +31,8 @@ class Order(Base):
     token_number = Column(String, unique=True, index=True, nullable=False)
     outlet_id = Column(Integer, ForeignKey("restaurant_outlets.id"), nullable=False)
     table_id = Column(Integer, ForeignKey("tables.id"), nullable=True)
-    order_type = Column(String, nullable=False)
-    status = Column(String, default=OrderStatus.PENDING.value)
+    order_type = Column(Enum(OrderType), nullable=False)
+    status = Column(Enum(OrderStatus), default=OrderStatus.PENDING, nullable=False)
     total_amount = Column(Float, default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -41,9 +41,9 @@ class Order(Base):
     outlet = relationship("RestaurantOutlet", back_populates="orders")
     invoices = relationship("Invoice", back_populates="order", cascade="all, delete-orphan")
     
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        if self.order_type == OrderType.DINE_IN.value and not self.table_id:
+    def validate_table(self):
+        """Ensure a table is assigned for dine-in orders."""
+        if self.order_type == OrderType.DINE_IN and not self.table_id:
             raise ValueError("Table ID is required for dine-in orders")
         
     def update_table_status(self, db):
@@ -66,8 +66,7 @@ class OrderItem(Base):
     quantity = Column(Integer, nullable=False)
     price = Column(Float, nullable=False)
     notes = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 
     # Relationships
     order = relationship("Order", back_populates="items")
@@ -79,9 +78,8 @@ class KOT(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     order_item_id = Column(Integer, ForeignKey("order_items.id"), nullable=False)
-    status = Column(String, default=KOTStatus.PENDING.value)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    status = Column(Enum(KOTStatus), default=KOTStatus.PENDING, nullable=False)
+
 
     # Relationships
     order_item = relationship("OrderItem", back_populates="kot")

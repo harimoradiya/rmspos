@@ -13,24 +13,49 @@ from schemas.user import UserCreate, UserResponse, UserUpdate, Token, LoginReque
 from utils.auth import (
     verify_password,
     get_password_hash,
-    create_access_token,generate_unique_pin
+    create_access_token,generate_unique_pin,
+    require_role
     )
+import logging
+import os
+SUPER_ADMIN_SECRET_KEY = os.getenv("SECRET_KEY")
 
 bearer_scheme = HTTPBearer()
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+
+
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register_user(
     user: UserCreate, 
+    admin_secret: Optional[str] = None,  # Accept secret key in request body
     db: Session = Depends(get_db), 
 ):
     try:
+        logger.info("Registering user")
+        logger.info(f"Super Admin Secret: {SUPER_ADMIN_SECRET_KEY}")
+        super_admin_exists = db.query(User).filter(User.role == UserRole.SUPERADMIN.value).first()
+    
+    # If no Super Admin exists, allow creation ONLY if the correct secret key is provided
+        if not super_admin_exists:
+                if admin_secret != SUPER_ADMIN_SECRET_KEY:
+                    raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Invalid secret key for Super Admin registration. Please contact the system administrator."
+                )
+                else:
+                    user.role = UserRole.SUPERADMIN
+                                                        
+
         # Check if user already exists
         existing_user = db.query(User).filter(User.email == user.email).first()
-
         if existing_user:
-                raise HTTPException(
+            print(f"User exists: {existing_user.email}")  # ✅ Safe to access email
+            raise HTTPException(
                  status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Email already registered"
             )
@@ -67,7 +92,7 @@ async def register_user(
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error registering user: {str(e)}"
+            detail=f"Error registering user: {e, str(e)}"
         )
 
 @router.post("/login", response_model=Token)
@@ -103,8 +128,7 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
             )
         
         access_token = create_access_token(
-            data={"sub": user.username},
-            expires_delta= timedelta(days=1)
+            data={"sub": user.username}
         )
         
         return {"access_token": access_token, "token_type": "bearer"}
@@ -113,7 +137,7 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Login error: {str(e)}"
+            detail=f"Login error: {e, str(e)}"
         )
 
 @router.get("/me", response_model=UserResponse)
@@ -249,7 +273,25 @@ async def delete_user(
                     detail="You can only delete users in your restaurant chains"
                 )
         
-        db.delete(db_user)
+        
+        # Find a replacement owner before deleting the user
+        DEFAULT_OWNER_ID = (
+            db.query(User.id).filter(User.role == UserRole.SUPERADMIN.value).first()
+        )
+        if not DEFAULT_OWNER_ID:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No default owner found. Assign a new owner before deleting this user."
+            )
+        DEFAULT_OWNER_ID = DEFAULT_OWNER_ID[0]  # Extract ID from tuple
+
+        # Reassign ownership of restaurant chains before deleting the user
+        db.query(RestaurantChain).filter(RestaurantChain.owner_id == user_id).update(
+            {"owner_id": DEFAULT_OWNER_ID}
+        )
+        db.commit()  # Ensure ownership is reassigned before deletion
+
+        db.delete(db_user)  # Now delete the user
         db.commit()
     except HTTPException:
         raise

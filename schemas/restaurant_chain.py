@@ -6,13 +6,16 @@ from .restaurant_outlet import RestaurantOutletResponse
 class RestaurantChainBase(BaseModel):
     name: str
     status: Optional[str] = "active"
+    chain_type: Optional[str] = "standard"
 
 class RestaurantChainCreate(RestaurantChainBase):
-    pass
+    owner_id: int
+    logo_url: Optional[str] = None
 
 class RestaurantChainUpdate(BaseModel):
     name: Optional[str] = None
     status: Optional[str] = None
+    chain_type: Optional[str] = None
 
 class RestaurantChainInDB(RestaurantChainBase):
     id: int
@@ -26,9 +29,5 @@ class RestaurantChainInDB(RestaurantChainBase):
 class RestaurantChainResponse(RestaurantChainInDB):
     outlets: Optional[List[RestaurantOutletResponse]] = None
 
-class RestaurantChainCreate(BaseModel):
-    name: str
-    status: Optional[str] = None
-
 class RestaurantChainDetailResponse(RestaurantChainResponse):
-    restaurants: List[RestaurantOutletResponse]  
+    restaurants: List[RestaurantOutletResponse]

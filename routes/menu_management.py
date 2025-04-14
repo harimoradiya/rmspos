@@ -5,6 +5,8 @@ from typing import List
 from database import get_db
 from models.menu_management import MenuCategory, MenuItem, MenuScope
 from models.user import User, UserRole
+from models.restaurant_outlet import RestaurantOutlet
+from models.restaurant_chain import RestaurantChain
 from schemas.menu_management import MenuCategoryCreate, MenuCategoryUpdate, MenuCategoryResponse, MenuItemCreate, MenuItemUpdate, MenuItemResponse
 from utils.auth import get_current_active_user, get_current_owner
 
@@ -12,7 +14,25 @@ router = APIRouter(prefix="/api/v1/menu-management", tags=["menu_management"])
 
 # Menu Category Management Endpoints
 @router.post("/categories", response_model=MenuCategoryResponse, status_code=status.HTTP_201_CREATED)
-async def create_menu_category(category: MenuCategoryCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_owner)):
+async def create_menu_category(category: MenuCategoryCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
+    # Check if user has appropriate role
+    if current_user.role not in [UserRole.SUPERADMIN, UserRole.OWNER, UserRole.MANAGER]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only superadmin, owner, and manager can create menu categories"
+        )
+    
+        # Check if category exists
+    chain_id  = db.query(RestaurantChain).filter(RestaurantChain.id == category.chain_id).first()
+    outlet_id = db.query(RestaurantOutlet).filter(RestaurantOutlet.id == category.outlet_id).first()
+    if not chain_id and not outlet_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Menu category with chain id {category.chain_id} or outlet id {category.outlet_id} not found"
+        )
+
+
+    
     db_category = MenuCategory(**category.dict())
     db.add(db_category)
     db.commit()
@@ -35,7 +55,7 @@ async def list_menu_categories(db: Session = Depends(get_db), current_user: User
         # For MANAGER and WAITER, only show categories from their assigned outlet
         categories = db.query(MenuCategory).filter(
             (MenuCategory.outlet_id == current_user.outlet_id) |
-            (MenuCategory.chain_id == db.query(User).filter(User.id == current_user.id).first().outlet.chain_id)
+            (MenuCategory.chain_id == db.query(User).filter(User.id == current_user.id).first().outlet_id)
         ).all()
     return categories
 
@@ -68,7 +88,22 @@ async def delete_menu_category(category_id: int, db: Session = Depends(get_db), 
 
 # Menu Item Management Endpoints
 @router.post("/items", response_model=MenuItemResponse, status_code=status.HTTP_201_CREATED)
-async def create_menu_item(item: MenuItemCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_owner)):
+async def create_menu_item(item: MenuItemCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
+    # Check if user has appropriate role
+    if current_user.role not in [UserRole.SUPERADMIN, UserRole.OWNER, UserRole.MANAGER]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only superadmin, owner, and manager can create menu items"
+        )
+    
+    # Check if category exists
+    category = db.query(MenuCategory).filter(MenuCategory.id == item.category_id).first()
+    if not category:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Menu category with id {item.category_id} not found"
+        )
+    
     db_item = MenuItem(**item.dict())
     db.add(db_item)
     db.commit()

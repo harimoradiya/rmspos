@@ -2,17 +2,21 @@ from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer,HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from database import get_db
 from models.user import User, UserRole
+from models.subscription import SubscriptionStatus
+from models.restaurant_outlet import RestaurantOutlet
 from schemas.user import TokenData
+from typing import Optional
 import os
 # JWT Configuration
 SECRET_KEY = os.getenv("SECRET_KEY")  # Load from main.py
 ALGORITHM = "HS256"
-# ACCESS_TOKEN_EXPIRE_MINUTES = 1
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 1440))
+
 
 # Create a bearer scheme instance
 bearer_scheme = HTTPBearer()
@@ -64,11 +68,25 @@ def verify_pin(pin: str, user: User) -> bool:
 #     """
 #     return redis_client.exists(f"blacklist:{token}")
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(data: dict) -> str:
     to_encode = data.copy()
+    expires_delta = timedelta(hours=1)  # Token expires in 1 hour
     expire = datetime.utcnow() + expires_delta
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def require_role(required_roles: list):
+    def role_dependency(current_user: User = Depends(get_current_user)):
+        if current_user.role not in required_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to perform this action",
+            )
+        return current_user
+    return Depends(role_dependency)
+
+
 
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme), db: Session = Depends(get_db)) -> User:
@@ -130,3 +148,53 @@ async def get_current_owner(current_user: User = Depends(get_current_user)) -> U
             detail="Only restaurant owners can perform this action"
         )
     return current_user
+
+async def get_current_staff(current_user: User = Depends(get_current_user)) -> User:
+    """Verify that the user is a staff member (MANAGER, WAITER, KITCHEN) and has an assigned outlet."""
+    if current_user.role not in [UserRole.MANAGER.value, UserRole.WAITER.value, UserRole.KITCHEN.value]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only staff members can perform this action"
+        )
+    if not current_user.outlet_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Staff must be assigned to an outlet"
+        )
+    if not current_user.has_active_subscription:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Outlet subscription is not active"
+        )
+    return current_user
+
+def verify_subscription(outlet_id: Optional[int] = None):
+    """Middleware to verify outlet subscription status."""
+    async def subscription_middleware(request: Request, db: Session = Depends(get_db)):
+        # Skip subscription check for authentication endpoints
+        if request.url.path.startswith("/api/v1/users/login") or \
+           request.url.path.startswith("/api/v1/users/register"):
+            return None
+            
+        # Get outlet_id from query params, request body, or path params
+        if not outlet_id:
+            outlet_id_from_request = request.query_params.get('outlet_id') or \
+                                   (await request.json()).get('outlet_id') if request.method != 'GET' else None
+            
+            if not outlet_id_from_request:
+                return None  # Skip check if no outlet_id found
+                
+        target_outlet_id = outlet_id or outlet_id_from_request
+        
+        # Query the outlet's subscription
+        outlet = db.query(RestaurantOutlet).filter(
+            RestaurantOutlet.id == target_outlet_id
+        ).first()
+        
+        if not outlet or not outlet.has_active_subscription():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Outlet subscription is not active"
+            )
+            
+    return subscription_middleware

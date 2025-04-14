@@ -9,6 +9,8 @@ class TableStatus(str, enum.Enum):
     OCCUPIED = "occupied"
     RESERVED = "reserved"
     OUT_OF_SERVICE = "out_of_service"
+    WAITING_FOR_CLEANING = "waiting_for_cleaning" # Table needs to be cleaned before the next use
+    MERGED = "merged"                # Tables have been combined for a large group
 
 class Area(Base):
     __tablename__ = "areas"
@@ -16,7 +18,6 @@ class Area(Base):
     id = Column(Integer, primary_key=True, index=True)
 
     name = Column(String, nullable=False)
-    description = Column(String, nullable=True)
     outlet_id = Column(Integer, ForeignKey("restaurant_outlets.id", ondelete="CASCADE"), nullable=False)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -33,7 +34,6 @@ class Table(Base):
     capacity = Column(Integer, nullable=False)
     status = Column(Enum(TableStatus), default=TableStatus.AVAILABLE)
     area_id = Column(Integer, ForeignKey("areas.id", ondelete="CASCADE"), nullable=False)
-    is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

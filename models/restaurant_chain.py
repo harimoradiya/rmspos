@@ -11,13 +11,13 @@ class RestaurantChain(Base):
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     logo_url = Column(String, nullable=True)  # Store the URL of the uploaded logo
     status = Column(String, server_default='active')
+    chain_type = Column(String, server_default='standard')  # Types could be: standard, franchise, corporate, etc.
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationships
     owner = relationship("User", back_populates="restaurant_chains")
     outlets = relationship("RestaurantOutlet", back_populates="chain", cascade="all, delete-orphan")
-    subscription = relationship("Subscription", back_populates="chain", uselist=False)
     menu_categories = relationship("MenuCategory", back_populates="chain", cascade="all, delete-orphan")
 
     class Config:

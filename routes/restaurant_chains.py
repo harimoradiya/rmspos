@@ -8,7 +8,7 @@ import os
 from database import get_db
 from models.restaurant_chain import RestaurantChain
 from models.restaurant_outlet import RestaurantOutlet
-from models.user import User
+from models.user import User,UserRole
 
 from schemas.restaurant_chain import (
     RestaurantChainCreate, 
@@ -16,7 +16,7 @@ from schemas.restaurant_chain import (
     RestaurantChainUpdate, 
     RestaurantChainDetailResponse
 )
-from utils.auth import get_current_owner, get_current_active_user
+from utils.auth import get_current_super_admin, get_current_active_user
 from utils.validators import validate_name_uniqueness
 
 router = APIRouter(prefix="/api/v1/restaurant-chains", tags=["restaurant-chains"])
@@ -24,46 +24,27 @@ router = APIRouter(prefix="/api/v1/restaurant-chains", tags=["restaurant-chains"
 @router.post("", response_model=RestaurantChainResponse, status_code=status.HTTP_201_CREATED)
 async def create_restaurant_chain(
     chain: RestaurantChainCreate,
-    logo: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_owner)
+    current_user: User = Depends(get_current_super_admin)
 ):
     try:
-        # Validate chain name uniqueness
-        validate_name_uniqueness(db, RestaurantChain, chain.name, current_user.id)
-        
-        # Handle logo upload if provided
-        logo_url = None
-        if logo:
-            # Validate file type
-            if not logo.content_type.startswith('image/'):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="File must be an image"
-                )
-            
-            # Create uploads directory if it doesn't exist
-            upload_dir = os.path.join(os.getcwd(), 'static', 'uploads', 'logos')
-            os.makedirs(upload_dir, exist_ok=True)
-            
-            # Generate unique filename
-            file_extension = os.path.splitext(logo.filename)[1]
-            logo_filename = f"{chain.name.lower().replace(' ', '_')}_{current_user.id}{file_extension}"
-            file_path = os.path.join(upload_dir, logo_filename)
-            
-            # Save the file
-            with open(file_path, "wb") as buffer:
-                shutil.copyfileobj(logo.file, buffer)
-            
-            # Set the logo URL
-            logo_url = f"/static/uploads/logos/{logo_filename}"
+        # Validate user existence
+        owner = db.query(User).filter(User.id == chain.owner_id).first()
+        if not owner:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"User with ID {chain.owner_id} not found"
+            )
+
+        # Validate chain name uniqueness for the owner
+        validate_name_uniqueness(db, RestaurantChain, chain.name, chain.owner_id)
         
         # Create new restaurant chain
         db_chain = RestaurantChain(
             name=chain.name,
-            owner_id=current_user.id,
+            owner_id=chain.owner_id,
             status=chain.status,
-            logo_url=logo_url
+            logo_url=chain.logo_url
         )
         
         db.add(db_chain)
@@ -87,7 +68,7 @@ async def create_restaurant_chain(
 @router.get("", response_model=List[RestaurantChainResponse])
 async def list_restaurant_chains(
     db: Session = Depends(get_db), 
-    current_user: User = Depends(get_current_owner),
+    current_user: User = Depends(get_current_active_user),
     status: Optional[str] = None,
     name: Optional[str] = Query(None),
     limit: int = Query(10, ge=1, le=100),
@@ -97,7 +78,22 @@ async def list_restaurant_chains(
     List restaurant chains with optional filtering and pagination
     """
     try:
-        query = db.query(RestaurantChain).filter(RestaurantChain.owner_id == current_user.id)
+        query = db.query(RestaurantChain)
+        
+        # Filter based on user role and outlet
+        if current_user.role == UserRole.SUPERADMIN:
+            pass  # Superadmin can see all chains
+        elif current_user.role == UserRole.OWNER:
+            query = query.filter(RestaurantChain.owner_id == current_user.id)
+        else:  # Staff roles (MANAGER, WAITER, KITCHEN)
+            if not current_user.outlet_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Staff must be assigned to an outlet"
+                )
+            query = query.join(RestaurantOutlet).filter(
+                RestaurantOutlet.id == current_user.outlet_id
+            )
         
         # Apply filters
         if status:
@@ -121,7 +117,7 @@ async def list_restaurant_chains(
 async def get_restaurant_chain(
     chain_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_owner)
+    current_user: User = Depends(get_current_super_admin)
 ):
     """
     Get detailed information about a specific restaurant chain
@@ -131,8 +127,7 @@ async def get_restaurant_chain(
         chain = db.query(RestaurantChain).options(
             joinedload(RestaurantChain.outlets)  # Assuming a relationship exists
         ).filter(
-            RestaurantChain.id == chain_id,
-            RestaurantChain.owner_id == current_user.id
+            RestaurantChain.id == chain_id
         ).first()
         
         if not chain:
@@ -153,7 +148,7 @@ async def update_restaurant_chain(
     chain_id: int,
     chain_update: RestaurantChainUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_owner)
+    current_user: User = Depends(get_current_super_admin)
 ):
     """
     Update a restaurant chain with comprehensive validation
@@ -161,8 +156,7 @@ async def update_restaurant_chain(
     try:
         # Find chain to update
         chain = db.query(RestaurantChain).filter(
-            RestaurantChain.id == chain_id,
-            RestaurantChain.owner_id == current_user.id
+            RestaurantChain.id == chain_id
         ).first()
         
         if not chain:
@@ -208,7 +202,7 @@ async def update_restaurant_chain(
 async def delete_restaurant_chain(
     chain_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_owner)
+    current_user: User = Depends(get_current_super_admin)
 ):
     """
     Delete a restaurant chain with cascading checks
@@ -227,8 +221,7 @@ async def delete_restaurant_chain(
         
         # Find chain to delete
         chain = db.query(RestaurantChain).filter(
-            RestaurantChain.id == chain_id,
-            RestaurantChain.owner_id == current_user.id
+            RestaurantChain.id == chain_id
         ).first()
         
         if not chain:
@@ -252,7 +245,7 @@ async def update_chain_status(
     chain_id: int,
     status: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_owner)
+    current_user: User = Depends(get_current_super_admin)
 ):
     """
     Dedicated endpoint for updating chain status

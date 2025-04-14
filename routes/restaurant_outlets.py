@@ -5,9 +5,9 @@ from typing import List
 from database import get_db
 from models.restaurant_outlet import RestaurantOutlet
 from models.restaurant_chain import RestaurantChain
-from models.user import User
+from models.user import User,UserRole
 from schemas.restaurant_outlet import RestaurantOutletCreate, RestaurantOutletResponse, RestaurantOutletUpdate
-from utils.auth import get_current_owner
+from utils.auth import get_current_super_admin,get_current_active_user
 
 router = APIRouter(prefix="/api/v1/restaurant-outlets", tags=["restaurant-outlets"])
 
@@ -15,12 +15,11 @@ router = APIRouter(prefix="/api/v1/restaurant-outlets", tags=["restaurant-outlet
 async def create_restaurant_outlet(
     outlet: RestaurantOutletCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_owner)
+    current_user: User = Depends(get_current_super_admin)
 ):
-    # Verify chain exists and user owns it
+    # Verify chain exists
     chain = db.query(RestaurantChain).filter(
-        RestaurantChain.id == outlet.chain_id,
-        RestaurantChain.owner_id == current_user.id
+        RestaurantChain.id == outlet.chain_id
     ).first()
     
     if not chain:
@@ -56,12 +55,27 @@ async def list_restaurant_outlets(
     state: str = None,
     country: str = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_owner)
+    current_user: User = Depends(get_current_active_user)
 ):
-    # Start with base query for outlets in user's chains
-    query = db.query(RestaurantOutlet).join(RestaurantChain).filter(
-        RestaurantChain.owner_id == current_user.id
-    )
+    # Start with base query for all outlets
+    query = db.query(RestaurantOutlet)
+    
+    # Filter based on user role and outlet
+    if current_user.role == UserRole.SUPERADMIN:
+        pass  # Superadmin can see all outlets
+    elif current_user.role == UserRole.OWNER:
+        # Owner can see all outlets in their chains
+        query = query.join(RestaurantChain).filter(
+            RestaurantChain.owner_id == current_user.id
+        )
+    else:  # Staff roles (MANAGER, WAITER, KITCHEN)
+        if not current_user.outlet_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Staff must be assigned to an outlet"
+            )
+        # Staff can only see their assigned outlet
+        query = query.filter(RestaurantOutlet.id == current_user.outlet_id)
     
     # Apply filters if provided
     if chain_id:
@@ -79,12 +93,11 @@ async def list_restaurant_outlets(
 async def get_restaurant_outlet(
     outlet_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_owner)
+    current_user: User = Depends(get_current_super_admin)
 ):
-    # Get specific outlet ensuring user owns the chain
-    outlet = db.query(RestaurantOutlet).join(RestaurantChain).filter(
-        RestaurantOutlet.id == outlet_id,
-        RestaurantChain.owner_id == current_user.id
+    # Get specific outlet
+    outlet = db.query(RestaurantOutlet).filter(
+        RestaurantOutlet.id == outlet_id
     ).first()
     
     if not outlet:
@@ -99,12 +112,11 @@ async def update_restaurant_outlet(
     outlet_id: int,
     outlet_update: RestaurantOutletUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_owner)
+    current_user: User = Depends(get_current_super_admin)
 ):
-    # Find outlet to update ensuring user owns the chain
-    outlet = db.query(RestaurantOutlet).join(RestaurantChain).filter(
-        RestaurantOutlet.id == outlet_id,
-        RestaurantChain.owner_id == current_user.id
+    # Find outlet to update
+    outlet = db.query(RestaurantOutlet).filter(
+        RestaurantOutlet.id == outlet_id
     ).first()
     
     if not outlet:
@@ -125,12 +137,11 @@ async def update_restaurant_outlet(
 async def delete_restaurant_outlet(
     outlet_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_owner)
+    current_user: User = Depends(get_current_super_admin)
 ):
-    # Find outlet to delete ensuring user owns the chain
-    outlet = db.query(RestaurantOutlet).join(RestaurantChain).filter(
-        RestaurantOutlet.id == outlet_id,
-        RestaurantChain.owner_id == current_user.id
+    # Find outlet to delete
+    outlet = db.query(RestaurantOutlet).filter(
+        RestaurantOutlet.id == outlet_id
     ).first()
     
     if not outlet:

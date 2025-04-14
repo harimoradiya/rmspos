@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
+from sqlalchemy import Column, Integer,Boolean, String, Float, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
@@ -14,11 +14,9 @@ class RestaurantOutlet(Base):
     state = Column(String, nullable=False)
     postal_code = Column(String, nullable=False)
     country = Column(String, nullable=False)
-    latitude = Column(Float, nullable=True)
-    longitude = Column(Float, nullable=True)
     phone = Column(String, nullable=True)
     email = Column(String, nullable=True)
-    status = Column(String, server_default='active')
+    is_active = Column(Boolean, default=True) 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -27,5 +25,11 @@ class RestaurantOutlet(Base):
     menu_categories = relationship("MenuCategory", back_populates="outlet", cascade="all, delete-orphan")   
     areas = relationship("Area", back_populates="outlet", cascade="all, delete-orphan")
     orders = relationship("Order", back_populates="outlet", cascade="all, delete-orphan")
+    users = relationship("User", back_populates="outlet", cascade="all, delete-orphan")
+    subscription = relationship("Subscription", back_populates="outlet", uselist=False)
+    
+    def has_active_subscription(self) -> bool:
+        """Check if the outlet has an active subscription."""
+        return self.subscription and self.subscription.is_active()
     class Config:
         orm_mode = True

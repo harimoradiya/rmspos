@@ -23,12 +23,22 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-
+    outlet_id = Column(Integer, ForeignKey("restaurant_outlets.id"), nullable=True)  # New field
+    
+    
     # Relationship with restaurants (for owners)
-    restaurant_chains = relationship("RestaurantChain", back_populates="owner")
-
-    # Relationship with subscription
-    subscription = relationship("models.subscription.Subscription", back_populates="user", uselist=False)
-
+    restaurant_chains = relationship("RestaurantChain", back_populates="owner", cascade="all, delete-orphan")
+    # Relationship with outlet (required for staff roles)
+    outlet = relationship("RestaurantOutlet", back_populates="users")
+    
+    @property
+    def requires_outlet(self) -> bool:
+        """Check if the user role requires an outlet assignment."""
+        return self.role in [UserRole.MANAGER.value, UserRole.WAITER.value, UserRole.KITCHEN.value]
+    
+    @property
+    def has_active_subscription(self) -> bool:
+        """Check if the user's outlet has an active subscription."""
+        return self.outlet and self.outlet.has_active_subscription()
     class Config:
         orm_mode = True
