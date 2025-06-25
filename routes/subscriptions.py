@@ -16,7 +16,8 @@ async def create_subscription(
     subscription: SubscriptionCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_super_admin)
-):  # Only superadmin can create subscriptions
+): 
+     # Only superadmin can create subscriptions
 
     try:
         # Validate outlet existence

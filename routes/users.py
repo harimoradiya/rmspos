@@ -4,13 +4,16 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from models.user import User, UserRole
 from models.restaurant_chain import RestaurantChain
+from models.restaurant_outlet import RestaurantOutlet
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
-from utils.auth import get_current_user, get_current_active_user, get_current_owner
+from utils.auth import get_current_user, get_current_active_user, get_current_owner, get_current_super_admin
 from database import get_db
 from models.user import User
 from schemas.user import UserCreate, UserResponse, UserUpdate, Token, LoginRequest
+from sqlalchemy import or_
 from utils.auth import (
+
     verify_password,
     get_password_hash,
     create_access_token,generate_unique_pin,
@@ -22,57 +25,94 @@ SUPER_ADMIN_SECRET_KEY = os.getenv("SECRET_KEY")
 
 bearer_scheme = HTTPBearer()
 
-router = APIRouter(prefix="/api/v1/users", tags=["users"])
+
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/api/v1/users", tags=["users"])
+
+
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register_user(
-    user: UserCreate, 
-    admin_secret: Optional[str] = None,  # Accept secret key in request body
-    db: Session = Depends(get_db), 
+    user: UserCreate,
+    admin_secret: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user, use_cache=False)
 ):
     try:
-        logger.info("Registering user")
-        logger.info(f"Super Admin Secret: {SUPER_ADMIN_SECRET_KEY}")
+        logger.info(f"Attempting to register user with email: {user.email}")
+
+        # Check if a Super Admin exists
         super_admin_exists = db.query(User).filter(User.role == UserRole.SUPERADMIN.value).first()
-    
-    # If no Super Admin exists, allow creation ONLY if the correct secret key is provided
+
+        # Case 1: No Super Admin exists (first registration)
         if not super_admin_exists:
-                if admin_secret != SUPER_ADMIN_SECRET_KEY:
-                    raise HTTPException(
+            if admin_secret != SUPER_ADMIN_SECRET_KEY:
+                logger.warning("Invalid secret key provided for first Super Admin registration")
+                raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Invalid secret key for Super Admin registration. Please contact the system administrator."
+                    detail="Invalid secret key for Super Admin registration. Please provide the correct secret key."
                 )
-                else:
-                    user.role = UserRole.SUPERADMIN
-                                                        
+            # Force role to SUPERADMIN for first user
+            if user.role != UserRole.SUPERADMIN:
+                logger.info(f"Overriding role to SUPERADMIN for first user: {user.email}")
+                user.role = UserRole.SUPERADMIN
+        else:
+            # Case 2: Super Admin exists, require authenticated Super Admin
+            if not current_user or current_user.role != UserRole.SUPERADMIN.value:
+                logger.warning(f"Unauthorized registration attempt by user: {current_user.email if current_user else 'None'}")
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Only a Super Admin can register new users"
+                )
+            # Restrict role assignment
+            if user.role == UserRole.SUPERADMIN and admin_secret != SUPER_ADMIN_SECRET_KEY:
+                logger.warning(f"Attempt to create Super Admin without valid secret key by {current_user.email}")
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Secret key required to create another Super Admin"
+                )
 
         # Check if user already exists
         existing_user = db.query(User).filter(User.email == user.email).first()
         if existing_user:
-            print(f"User exists: {existing_user.email}")  # ✅ Safe to access email
+            logger.warning(f"Registration failed: Email already registered: {user.email}")
             raise HTTPException(
-                 status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Email already registered"
             )
-        
-        # Generate username from email
+
+        # Validate outlet_id if provided
+        if user.outlet_id:
+            outlet = db.query(RestaurantOutlet).filter(RestaurantOutlet.id == user.outlet_id).first()
+            if not outlet:
+                logger.warning(f"Invalid outlet_id {user.outlet_id} provided for user {user.email}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Outlet ID {user.outlet_id} not found"
+                )
+            # Optional: Restrict outlet_id for non-MANAGER roles
+            if user.role != UserRole.MANAGER:
+                logger.warning(f"Outlet ID provided for non-manager role: {user.role} for user {user.email}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Outlet ID can only be assigned to MANAGER role"
+                )
+
+        # Generate unique username
         base_username = user.email.split('@')[0]
         username = base_username
         counter = 1
-        
-        # Ensure username is unique
         while db.query(User).filter(User.username == username).first():
             username = f"{base_username}{counter}"
             counter += 1
 
         # Create new user
         hashed_password = get_password_hash(user.password)
-        # Generate unique PIN for the user
         unique_pin = generate_unique_pin(db)
         db_user = User(
             email=user.email,
@@ -81,18 +121,109 @@ async def register_user(
             pin=unique_pin,
             role=user.role.value,
             is_active=True,
-            created_at=datetime.utcnow()
+            created_at=datetime.utcnow(),
+            outlet_id=user.outlet_id  # Assign outlet_id
         )
-        
+
         db.add(db_user)
         db.commit()
         db.refresh(db_user)
+        logger.info(f"User registered successfully: {db_user.email} (ID: {db_user.id}, Role: {db_user.role}, Outlet ID: {db_user.outlet_id})")
         return db_user
+
+    except HTTPException as e:
+        db.rollback()
+        logger.warning(f"Registration failed for {user.email}: {e.detail}")
+        raise
     except Exception as e:
         db.rollback()
+        logger.error(f"Unexpected error registering user {user.email}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error registering user: {e, str(e)}"
+            detail="Failed to register user"
+        )
+    
+
+# Separate endpoint for initial Super Admin setup
+@router.post("/setup-admin", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+async def setup_super_admin(
+    user: UserCreate,
+    admin_secret: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Initial Super Admin setup - only available when no Super Admin exists
+    """
+    try:
+        logger.info(f"Attempting to setup Super Admin with email: {user.email}")
+
+        # Check if a Super Admin already exists
+        super_admin_exists = db.query(User).filter(User.role == UserRole.SUPERADMIN.value).first()
+        
+        if super_admin_exists:
+            logger.warning("Attempt to setup Super Admin when one already exists")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Super Admin already exists. Use the regular registration endpoint."
+            )
+
+        # Validate secret key
+        if admin_secret != SUPER_ADMIN_SECRET_KEY:
+            logger.warning("Invalid secret key provided for Super Admin setup")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Invalid secret key for Super Admin setup"
+            )
+
+        # Check if user already exists
+        existing_user = db.query(User).filter(User.email == user.email).first()
+        if existing_user:
+            logger.warning(f"Setup failed: Email already registered: {user.email}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered"
+            )
+
+        # Force role to SUPERADMIN
+        user.role = UserRole.SUPERADMIN
+
+        # Generate unique username
+        base_username = user.email.split('@')[0]
+        username = base_username
+        counter = 1
+        while db.query(User).filter(User.username == username).first():
+            username = f"{base_username}{counter}"
+            counter += 1
+
+        # Create Super Admin user
+        hashed_password = get_password_hash(user.password)
+        unique_pin = generate_unique_pin(db)
+        db_user = User(
+            email=user.email,
+            username=username,
+            hashed_password=hashed_password,
+            pin=unique_pin,
+            role=UserRole.SUPERADMIN.value,
+            is_active=True,
+            created_at=datetime.utcnow()
+        )
+
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+        logger.info(f"Super Admin setup successfully: {db_user.email} (ID: {db_user.id})")
+        return db_user
+
+    except HTTPException as e:
+        db.rollback()
+        logger.warning(f"Super Admin setup failed for {user.email}: {e.detail}")
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Unexpected error setting up Super Admin {user.email}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to setup Super Admin"
         )
 
 @router.post("/login", response_model=Token)
@@ -167,10 +298,24 @@ async def list_users(
         if current_user.role != UserRole.SUPERADMIN.value:
             # Correctly extract chain IDs
             chain_ids = [chain.id for chain in current_user.restaurant_chains]
+
+              # Get outlet IDs under these chains
+            outlet_ids = db.query(RestaurantOutlet.id)\
+                .filter(RestaurantOutlet.chain_id.in_(chain_ids))\
+                .subquery()
             
+            # Include:
+            # - Staff users assigned to those outlets
+            # - Owner themselves
             query = query.filter(
-                User.restaurant_chains.any(RestaurantChain.id.in_(chain_ids))
+                or_(
+
+                    User.outlet_id.in_(outlet_ids),
+                    User.id == current_user.id
+                )
             )
+    
+
         
         users = query.order_by(User.created_at.desc()).all()
         return users

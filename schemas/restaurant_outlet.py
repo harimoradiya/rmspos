@@ -9,11 +9,9 @@ class RestaurantOutletBase(BaseModel):
     state: str
     postal_code: str
     country: str
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
     phone: Optional[str] = None
     email: Optional[str] = None
-    status: Optional[str] = "active"
+    is_active: Optional[bool] = True
 
 class RestaurantOutletCreate(RestaurantOutletBase):
     chain_id: int

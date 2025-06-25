@@ -18,6 +18,9 @@ from schemas.restaurant_chain import (
 )
 from utils.auth import get_current_super_admin, get_current_active_user
 from utils.validators import validate_name_uniqueness
+import logging
+
+logging = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/restaurant-chains", tags=["restaurant-chains"])
 
@@ -74,11 +77,9 @@ async def list_restaurant_chains(
     limit: int = Query(10, ge=1, le=100),
     offset: int = Query(0, ge=0)
 ):
-    """
-    List restaurant chains with optional filtering and pagination
-    """
+
     try:
-        query = db.query(RestaurantChain)
+        query = db.query(RestaurantChain).options(joinedload(RestaurantChain.outlets))
         
         # Filter based on user role and outlet
         if current_user.role == UserRole.SUPERADMIN:
@@ -91,9 +92,12 @@ async def list_restaurant_chains(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Staff must be assigned to an outlet"
                 )
-            query = query.join(RestaurantOutlet).filter(
+            logging.info(f"Filtering chains for outlet ID: {current_user.outlet_id}")
+            query = query.join(RestaurantChain.outlets).filter(
                 RestaurantOutlet.id == current_user.outlet_id
-            )
+                )
+            count = query.count()
+            logging.info(f"Chains visible to outlet ID {current_user.outlet_id}: {count}")
         
         # Apply filters
         if status:
@@ -102,46 +106,23 @@ async def list_restaurant_chains(
         if name:
             query = query.filter(RestaurantChain.name.ilike(f"%{name}%"))
         
-        # Apply pagination
-        total_count = query.count()
         chains = query.offset(offset).limit(limit).all()
-        
+
+        if current_user.role in [UserRole.MANAGER, UserRole.WAITER, UserRole.KITCHEN]:
+            for chain in chains:
+                chain.outlets = [
+                    outlet for outlet in chain.outlets
+                    if outlet.id == current_user.outlet_id
+                ]
+
         return chains
+        
     except SQLAlchemyError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Database error: {str(e)}"
         )
 
-@router.get("/{chain_id}", response_model=RestaurantChainResponse)
-async def get_restaurant_chain(
-    chain_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_super_admin)
-):
-    """
-    Get detailed information about a specific restaurant chain
-    """
-    try:
-        # Fetch chain with associated restaurants
-        chain = db.query(RestaurantChain).options(
-            joinedload(RestaurantChain.outlets)  # Assuming a relationship exists
-        ).filter(
-            RestaurantChain.id == chain_id
-        ).first()
-        
-        if not chain:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Restaurant chain with ID {chain_id} not found"
-            )
-        
-        return chain
-    except SQLAlchemyError as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Database error: {str(e)}"
-        )
 
 @router.put("/{chain_id}", response_model=RestaurantChainResponse)
 async def update_restaurant_chain(

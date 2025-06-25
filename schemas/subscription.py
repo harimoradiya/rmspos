@@ -29,9 +29,9 @@ class SubscriptionResponse(SubscriptionBase):
     outlet_id: int
     start_date: datetime
     end_date: Optional[datetime]
-    created_at: datetime
-    updated_at: Optional[datetime]
-    is_active: bool
+    # created_at: datetime
+    # updated_at: Optional[datetime]
+    # is_active: bool
 
     class Config:
         orm_mode = True

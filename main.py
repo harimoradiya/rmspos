@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 
 # Import routes
-from routes import users, restaurant_chains, restaurant_outlets, subscriptions,menu_management,table_management,billing,order_management,pdf_routes,websocket
+from routes import users, restaurant_chains, restaurant_outlets, subscriptions,menu_management,table_management,billing,order_management,notifications
 
 # Import database and middleware
 from database import engine, Base, get_db
@@ -55,8 +55,7 @@ app.include_router(menu_management.router)
 app.include_router(table_management.router)
 app.include_router(billing.router)
 app.include_router(order_management.router) 
-app.include_router(pdf_routes.router)
-app.include_router(websocket.router)
+app.include_router(notifications.router)
 
 # Root endpoint
 @app.get("/")

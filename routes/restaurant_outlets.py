@@ -37,11 +37,9 @@ async def create_restaurant_outlet(
         state=outlet.state,
         postal_code=outlet.postal_code,
         country=outlet.country,
-        latitude=outlet.latitude,
-        longitude=outlet.longitude,
         phone=outlet.phone,
         email=outlet.email,
-        status=outlet.status
+        is_active=outlet.is_active
     )
     db.add(db_outlet)
     db.commit()

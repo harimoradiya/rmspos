@@ -14,6 +14,11 @@ class PaymentStatus(str, enum.Enum):
     COMPLETED = "completed"
     FAILED = "failed"
 
+class InvoiceStatus(str, enum.Enum):
+    PENDING = "pending"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
 class Invoice(Base):
     __tablename__ = "invoices"
 
@@ -24,12 +29,16 @@ class Invoice(Base):
     discount = Column(Float, default=0.0)
     tax = Column(Float, default=0.0)
     total_amount = Column(Float, nullable=False)
+    status = Column(Enum(InvoiceStatus), default=InvoiceStatus.PENDING, nullable=False)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     order = relationship("Order", back_populates="invoices")
     payments = relationship("Payment", back_populates="invoice", cascade="all, delete-orphan")
+    created_by = relationship("User")
+
 
 class Payment(Base):
     __tablename__ = "payments"

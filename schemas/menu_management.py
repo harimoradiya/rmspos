@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, root_validator, Field
 from typing import Optional, List
 from datetime import datetime
 from models.menu_management import MenuScope
@@ -9,6 +9,18 @@ class MenuCategoryBase(BaseModel):
     scope: MenuScope
     chain_id: Optional[int] = None
     outlet_id: Optional[int] = None
+
+    @root_validator(skip_on_failure=True)
+    def validate_scope_and_ids(cls, values):
+        scope = values.get("scope")
+        chain_id = values.get("chain_id")
+        outlet_id = values.get("outlet_id")
+
+        if scope == MenuScope.CHAIN and not chain_id:
+            raise ValueError("chain_id is required for chain-scoped categories")
+        if scope == MenuScope.OUTLET and not outlet_id:
+            raise ValueError("outlet_id is required for outlet-scoped categories")
+        return values
 
 class MenuCategoryCreate(MenuCategoryBase):
     pass
@@ -22,7 +34,7 @@ class MenuCategoryResponse(MenuCategoryBase):
     id: int
     is_active: bool
     created_at: datetime
-    updated_at: Optional[datetime]
+    # updated_at: Optional[datetime]
 
     class Config:
         from_attributes = True
@@ -46,7 +58,6 @@ class MenuItemUpdate(BaseModel):
 class MenuItemResponse(MenuItemBase):
     id: int
     is_available: bool
-    is_active: bool
     created_at: datetime
     updated_at: Optional[datetime]
 

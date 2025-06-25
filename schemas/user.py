@@ -39,12 +39,14 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str
     role: UserRole
+    outlet_id: Optional[int] = None  # Add optional outlet_id
 
 class UserUpdate(BaseModel):
     username : Optional[str] = None
     email: Optional[EmailStr] = None
     role: Optional[UserRole] = None
     is_active: Optional[bool] = None
+    outlet_id: Optional[int] = None
 
 class UserInDB(UserBase):
     id: int

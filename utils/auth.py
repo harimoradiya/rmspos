@@ -95,15 +95,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(b
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    
-    # Check if token is blacklisted
-    # if is_token_blacklisted(token.credentials):
-    #     raise HTTPException(
-    #         status_code=status.HTTP_401_UNAUTHORIZED,
-    #         detail="Token is no longer valid. Please login again.",
-    #         headers={"WWW-Authenticate": "Bearer"},
-    #     )
-    
+
     try:
             # Extract the token from credentials
         token = credentials.credentials

@@ -22,7 +22,6 @@ class RestaurantOutlet(Base):
 
     # Relationships
     chain = relationship("RestaurantChain", back_populates="outlets")
-    menu_categories = relationship("MenuCategory", back_populates="outlet", cascade="all, delete-orphan")   
     areas = relationship("Area", back_populates="outlet", cascade="all, delete-orphan")
     orders = relationship("Order", back_populates="outlet", cascade="all, delete-orphan")
     users = relationship("User", back_populates="outlet", cascade="all, delete-orphan")

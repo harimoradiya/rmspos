@@ -5,7 +5,6 @@ from models.table_management import TableStatus
 
 class AreaBase(BaseModel):
     name: str
-    description: Optional[str] = None
     outlet_id: int
 
 class AreaCreate(AreaBase):
@@ -42,7 +41,6 @@ class TableUpdate(BaseModel):
 class TableResponse(TableBase):
     id: int
     status: TableStatus
-    is_active: bool
     created_at: datetime
     updated_at: Optional[datetime]
 
