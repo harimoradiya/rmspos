@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
-from database import get_db
+from utils.database import get_db
 from models.table_management import Area, Table, TableStatus
 from models.restaurant_outlet import RestaurantOutlet
 from models.restaurant_chain import RestaurantChain

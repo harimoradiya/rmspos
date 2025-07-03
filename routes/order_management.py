@@ -6,7 +6,7 @@ from typing import List, Optional
 from datetime import datetime
 from routes.notifications import notify_kitchen_new_kot, notify_order_status_update,notify_kot_status_update
 
-from database import get_db
+from utils.database import get_db
 from models.menu_management import MenuItem,MenuCategory
 from models.order_management import Order, OrderItem, KOT, OrderStatus, KOTStatus
 from models.user import User

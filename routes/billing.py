@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from typing import List,Dict,Optional
-from database import get_db
+from utils.database import get_db
 
 from schemas.billing import InvoiceCreate, InvoiceResponse, SplitBillRequest
 from models.user import User, UserRole

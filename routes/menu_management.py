@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
 
-from database import get_db
+from utils.database import get_db
 from models.menu_management import MenuCategory, MenuItem, MenuScope
 from models.user import User, UserRole
 from models.restaurant_outlet import RestaurantOutlet

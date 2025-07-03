@@ -5,7 +5,7 @@ from typing import List, Optional
 import shutil
 import os
 
-from database import get_db
+from utils.database import get_db
 from models.restaurant_chain import RestaurantChain
 from models.restaurant_outlet import RestaurantOutlet
 from models.user import User,UserRole

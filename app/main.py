@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from routes import users, restaurant_chains, restaurant_outlets, subscriptions,menu_management,table_management,billing,order_management,notifications
 
 # Import database and middleware
-from database import engine, Base, get_db
+from utils.database import engine, Base, get_db
 
 # Load environment variables
 load_dotenv()
@@ -65,4 +65,4 @@ async def root():
 # Main run block
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)

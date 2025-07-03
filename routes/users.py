@@ -8,7 +8,7 @@ from models.restaurant_outlet import RestaurantOutlet
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from utils.auth import get_current_user, get_current_active_user, get_current_owner, get_current_super_admin
-from database import get_db
+from utils.database import get_db
 from models.user import User
 from schemas.user import UserCreate, UserResponse, UserUpdate, Token, LoginRequest
 from sqlalchemy import or_

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime, timedelta
-from database import get_db
+from utils.database import get_db
 from models.subscription import Subscription, SubscriptionTier, SubscriptionStatus
 from models.user import User, UserRole
 from models.restaurant_outlet import RestaurantOutlet

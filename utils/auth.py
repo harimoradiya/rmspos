@@ -5,7 +5,7 @@ from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer,HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-from database import get_db
+from utils.database import get_db
 from models.user import User, UserRole
 from models.subscription import SubscriptionStatus
 from models.restaurant_outlet import RestaurantOutlet

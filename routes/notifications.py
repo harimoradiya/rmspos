@@ -2,7 +2,7 @@ import logging
 from fastapi import WebSocket, WebSocketDisconnect,APIRouter,Depends
 from typing import Dict, List
 from sqlalchemy.orm import Session
-from database import get_db
+from utils.database import get_db
 from models.restaurant_outlet import RestaurantOutlet
 
 logger = logging.getLogger(__name__)
