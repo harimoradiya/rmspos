@@ -6,7 +6,6 @@ from models.user import User, UserRole
 from models.restaurant_chain import RestaurantChain
 from models.restaurant_outlet import RestaurantOutlet
 from datetime import datetime, timedelta
-from jose import JWTError, jwt
 from utils.auth import get_current_user, get_current_active_user, get_current_owner, get_current_super_admin
 from utils.database import get_db
 from models.user import User

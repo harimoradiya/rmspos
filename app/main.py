@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from starlette.middleware.base import BaseHTTPMiddleware
 from dotenv import load_dotenv
-from sqlalchemy.orm import Session
+
 
 
 # Import routes
